@@ -2,5 +2,5 @@ flask>=3.0
 numpy
 pandas
 pillow
-timm>=0.9
+onnxruntime
 huggingface_hub>=0.20

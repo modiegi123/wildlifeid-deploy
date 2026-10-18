@@ -151,7 +151,7 @@ def _get_embedder(svc: Services, profile: str) -> TorchEmbedder:
         with svc.embedders_lock:
             if svc.embedders.get(profile) is None:
                 weights = Settings(profile=profile).weights_path
-                embedder = TorchEmbedder(profile, weights)
+                embedder = _part3.build_embedder(profile, weights)
                 embedder.load()
                 svc.embedders[profile] = embedder
     return svc.embedders[profile]

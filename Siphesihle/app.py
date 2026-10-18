@@ -35,6 +35,7 @@ ARCH = "swin_large_patch4_window12_384"                 # timm name of MegaDescr
 BASELINE_MODEL = os.environ.get("WILDLIFEID_BASELINE_MODEL", "BVRA/MegaDescriptor-L-384")
 HF_NAME = f"hf-hub:{BASELINE_MODEL}"                     # e.g. BVRA/MegaDescriptor-T-224 on memory-constrained hosts
 MODEL_INPUT_SIZES = {"BVRA/MegaDescriptor-L-384": 384, "BVRA/MegaDescriptor-T-224": 224}
+ONNX_REPO = os.environ.get("WILDLIFEID_ONNX_REPO")       # set -> baseline runs via onnxruntime, not torch+timm
 
 
 # =============================================================== settings
@@ -56,9 +57,16 @@ class Settings:
     def from_env(cls) -> "Settings":
         e = os.environ.get
         profile = e("WILDLIFEID_PROFILE", "baseline").strip().lower()
-        # finetuned is always the Swin-L-384 architecture (model_weights.pt); baseline's input size
-        # follows whichever model WILDLIFEID_BASELINE_MODEL points at (e.g. 224 for the lighter T-224).
-        input_size = MODEL_INPUT_SIZES.get(BASELINE_MODEL, 384) if profile == "baseline" else 384
+        # finetuned is always the Swin-L-384 architecture (model_weights.pt). baseline's input size
+        # follows whichever model is actually serving it: the exported ONNX model when ONNX_REPO is
+        # set (WILDLIFEID_ONNX_INPUT_SIZE, default 224 - our only exported model so far), otherwise
+        # whichever torch model WILDLIFEID_BASELINE_MODEL points at (e.g. 384 for the full L-384).
+        if profile != "baseline":
+            input_size = 384
+        elif ONNX_REPO:
+            input_size = int(e("WILDLIFEID_ONNX_INPUT_SIZE", "224"))
+        else:
+            input_size = MODEL_INPUT_SIZES.get(BASELINE_MODEL, 384)
         return cls(
             profile=profile,
             project_dir=Path(e("WILDLIFEID_PROJECT", HERE.parent)),
@@ -331,6 +339,63 @@ class TorchEmbedder:
         return f[0].cpu().numpy().astype(np.float32)
 
 
+class OnnxEmbedder:
+    """baseline-only, onnxruntime alternative to TorchEmbedder. Importing torch+timm costs ~300MB
+    of RAM before a model is even loaded - too much for memory-constrained hosts (e.g. free-tier
+    PaaS). Runs a pre-exported copy of the same baseline model instead; same preprocessing in,
+    same L2-normalised vector out, so Gallery/decide() don't need to know which one produced it.
+    The .onnx file is pulled from WILDLIFEID_ONNX_REPO via huggingface_hub, same download-on-first-
+    use pattern as the pretrained torch weights."""
+    dim = 768
+
+    def __init__(self, repo_id: str, filename: str = "model.onnx"):
+        self.repo_id, self.filename = repo_id, filename
+        self.name = f"{repo_id} (onnx)"
+        self._session = None
+        self._lock = threading.Lock()
+
+    @property
+    def ready(self) -> bool:
+        return self._session is not None
+
+    def load(self) -> None:
+        with self._lock:
+            if self._session is not None:
+                return
+            try:
+                import onnxruntime as ort
+                from huggingface_hub import hf_hub_download
+            except ImportError as e:
+                raise EmbedderError("onnxruntime and huggingface_hub are required: "
+                                    "pip install onnxruntime huggingface_hub") from e
+            try:
+                path = hf_hub_download(repo_id=self.repo_id, filename=self.filename)
+            except Exception as e:
+                raise EmbedderError(f"Could not download {self.filename} from {self.repo_id}: {e}") from e
+            session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+            self._input_name = session.get_inputs()[0].name
+            self.dim = int(session.get_outputs()[0].shape[-1])
+            self._session = session
+
+    def embed(self, x: np.ndarray) -> np.ndarray:
+        """float32 [3,H,W] from preprocess() -> float32 [dim], L2-normalised."""
+        if self._session is None:
+            self.load()
+        with self._lock:
+            batch = np.ascontiguousarray(x, dtype=np.float32)[None]
+            out = self._session.run(None, {self._input_name: batch})[0][0]
+        norm = np.linalg.norm(out)
+        return (out / norm if norm > 1e-12 else out).astype(np.float32)
+
+
+def build_embedder(profile: str, weights_path: Path):
+    """Single source of truth for which embedder backend serves a profile - used by this app's
+    own create_app() and by Part 4's admin app, so both always agree on baseline vs onnx."""
+    if profile == "baseline" and ONNX_REPO:
+        return OnnxEmbedder(ONNX_REPO)
+    return TorchEmbedder(profile, weights_path)
+
+
 # =============================================================== upload store
 _ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -423,7 +488,7 @@ def create_app(settings: Settings | None = None, *, embedder=None, gallery: Gall
         thr, src = _load_threshold(settings)
 
     if embedder is None:
-        embedder = TorchEmbedder(settings.profile, settings.weights_path)
+        embedder = build_embedder(settings.profile, settings.weights_path)
         if settings.eager_load:
             try:
                 embedder.load()

@@ -8,6 +8,7 @@ gallery of known individuals using MegaDescriptor embeddings.
 - `/pipeline/` - baseline + fine-tuning results report
 
 This deployment runs the lighter `MegaDescriptor-T-224` model (768-d embeddings, separately
-calibrated - see `Siphesihle/thresholds.json`) instead of the full `MegaDescriptor-L-384`, to fit
-free-tier hosting memory limits. The gallery starts with the 8 frozen sample identities; anything
-added via `/admin/` persists only for this deployment's lifetime (no persistent disk).
+calibrated - see `Siphesihle/thresholds.json`) via `onnxruntime` instead of PyTorch, to fit
+free-tier hosting memory limits (PyTorch alone needs ~300MB just to import). The gallery starts
+with the 8 frozen sample identities; anything added via `/admin/` persists only for this
+deployment's lifetime (no persistent disk).

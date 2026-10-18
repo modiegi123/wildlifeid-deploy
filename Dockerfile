@@ -2,11 +2,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# CPU-only torch + torchvision, installed together from the same index so their compiled ops
-# stay ABI-compatible (timm depends on torchvision; installing it separately via PyPI later
-# pulls a mismatched build and breaks with "operator torchvision::nms does not exist").
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -14,9 +9,10 @@ COPY . .
 
 ENV HOST=0.0.0.0
 ENV PORT=7860
-# Full L-384 model needs ~800MB+ RAM just for weights - too much for most free hosting tiers.
-# T-224 (768-d embeddings, separately recalibrated - see Siphesihle/thresholds.json) fits instead.
-ENV WILDLIFEID_BASELINE_MODEL=BVRA/MegaDescriptor-T-224
+# PyTorch alone needs ~300MB RAM just to import, before any model is loaded - too much for this
+# host's free tier. Runs a pre-exported ONNX copy of the baseline model via onnxruntime instead
+# (see Siphesihle/app.py: OnnxEmbedder), downloaded from the Hub on first use.
+ENV WILDLIFEID_ONNX_REPO=modiegimorudu/megadescriptor-t224-onnx
 EXPOSE 7860
 
 CMD ["python", "run.py"]
