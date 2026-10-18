@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WildlifeID - Identify an animal</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('index') }}">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 2C8 6 4 8.5 4 13a8 8 0 0 0 16 0c0-4.5-4-7-8-11Zm0 17a5 5 0 0 1-5-5c0-2.4 1.8-4 5-7 3.2 3 5 4.600 5 7a5 5 0 0 1-5 5Z"/></svg>
+      <span>WildlifeID</span>
+    </a>
+    <span class="tagline">Learning-based wildlife identification</span>
+    <nav class="site-nav">
+      <a class="active" href="/">Upload</a>
+      <a href="/admin/">Admin</a>
+      <a href="/pipeline/">Pipeline report</a>
+    </nav>
+  </header>
+  <main class="container">
+<section class="card intro">
+  <h1>Who is this animal?</h1>
+  <p>Upload a photo and WildlifeID compares it with a gallery of known individuals. If it is a
+     close match you get the individual's identity; if not, it is reported as a <strong>possible new individual</strong>.</p>
+</section>
+
+<section class="card">
+  <form id="upload-form" novalidate>
+    <div id="dropzone" class="dropzone" tabindex="0" role="button"
+         aria-label="Choose or drop a photo. JPG, PNG or WebP, up to {{ max_mb }} megabytes.">
+      <input id="file-input" name="file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <div id="dz-empty">
+        <svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path fill="currentColor" d="M19 7h-1.2l-1.2-2H7.400L6.200 7H5a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-7a3 3 0 0 0-3-3Zm-7 10.500A4.500 4.500 0 1 1 12 8.500a4.500 4.500 0 0 1 0 9Zm0-2a2.500 2.500 0 1 0 0-5 2.500 2.500 0 0 0 0 5Z"/></svg>
+        <p><strong>Drop a photo here</strong> or click to browse</p>
+        <p class="hint">JPG, PNG or WebP &middot; up to {{ max_mb }} MB</p>
+      </div>
+      <figure id="dz-preview" hidden>
+        <img id="preview-img" alt="Preview of the selected photo">
+        <figcaption id="preview-name"></figcaption>
+      </figure>
+    </div>
+
+    <p id="form-error" class="error" role="alert" hidden></p>
+
+    <div class="actions">
+      <button id="submit-btn" class="btn primary" type="submit" disabled>Identify</button>
+      <button id="clear-btn" class="btn" type="button" hidden>Choose a different photo</button>
+    </div>
+    <div id="progress" class="progress" hidden><span></span></div>
+    <p id="status" class="hint" aria-live="polite"></p>
+  </form>
+</section>
+</main>
+  <footer class="site-footer">WildlifeID &middot; Big Data Analytics project &middot; Part 3: upload &amp; results</footer>
+  <script>window.WILDLIFEID = {maxMb: {{ max_mb }}, uploadUrl: "{{ url_for('api_upload') }}"};</script>
+<script>
+(() => {
+  const cfg = window.WILDLIFEID;
+  const $ = (id) => document.getElementById(id);
+  const dz = $("dropzone"), input = $("file-input"), form = $("upload-form");
+  const submit = $("submit-btn"), clear = $("clear-btn"), errBox = $("form-error");
+  const progress = $("progress"), status = $("status");
+  const OK_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  let file = null, previewUrl = null;
+
+  const showError = (msg) => { errBox.textContent = msg; errBox.hidden = !msg; };
+
+  function reset() {
+    file = null; input.value = "";
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    $("dz-preview").hidden = true; $("dz-empty").hidden = false;
+    submit.disabled = true; clear.hidden = true; showError("");
+  }
+
+  function choose(f) {
+    showError("");
+    if (!f) return;
+    if (!OK_TYPES.includes(f.type)) return showError("Please choose a JPG, PNG or WebP image.");
+    if (f.size > cfg.maxMb * 1024 * 1024) return showError(`That file is larger than ${cfg.maxMb} MB.`);
+    if (f.size === 0) return showError("That file is empty.");
+    file = f;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(f);
+    $("preview-img").src = previewUrl;
+    $("preview-name").textContent = f.name;              // textContent: filenames are untrusted
+    $("dz-preview").hidden = false; $("dz-empty").hidden = true;
+    submit.disabled = false; clear.hidden = false;
+  }
+
+  dz.addEventListener("click", () => input.click());
+  dz.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => choose(input.files[0]));
+  clear.addEventListener("click", reset);
+  ["dragenter", "dragover"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
+  dz.addEventListener("drop", (e) => choose(e.dataTransfer.files[0]));
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!file) return;
+    showError(""); submit.disabled = true; clear.disabled = true;
+    progress.hidden = false; status.textContent = "Uploading and checking your photo...";
+    try {
+      const body = new FormData(); body.append("file", file);
+      const res = await fetch(cfg.uploadUrl, { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error && data.error.message) || `Upload failed (${res.status}).`);
+      window.location.href = data.results_page_url;
+    } catch (err) {
+      showError(err.message || "Upload failed. Please try again.");
+      submit.disabled = false; clear.disabled = false;
+      progress.hidden = true; status.textContent = "";
+    }
+  });
+})();
+</script>
+</body>
+</html>

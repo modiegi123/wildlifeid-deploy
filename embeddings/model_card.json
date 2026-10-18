@@ -1,0 +1,10 @@
+{
+  "model": "BVRA/MegaDescriptor-T-224",
+  "source": "https://huggingface.co/BVRA/MegaDescriptor-T-224",
+  "weights": "pretrained, frozen (lighter fallback for memory-constrained hosts)",
+  "embedding_dim": 768,
+  "dtype": "float32",
+  "normalisation": "L2 (unit length)",
+  "n_images": 24,
+  "n_identities": 8
+}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WildlifeID - Pipeline report</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 2C8 6 4 8.5 4 13a8 8 0 0 0 16 0c0-4.5-4-7-8-11Zm0 17a5 5 0 0 1-5-5c0-2.4 1.8-4 5-7 3.2 3 5 4.600 5 7a5 5 0 0 1-5 5Z"/></svg>
+      <span>WildlifeID</span>
+    </a>
+    <span class="tagline">Pipeline report</span>
+    <nav class="site-nav">
+      <a href="/">Upload</a>
+      <a href="/admin/">Admin</a>
+      <a class="active" href="/pipeline/">Pipeline report</a>
+    </nav>
+  </header>
+  <main class="container">
+
+<section class="card">
+  <h2>Part 1 &middot; Baseline embeddings</h2>
+  <p>Embeds the 24-image / 8-identity frozen sample set with the pretrained
+     <strong>{{ part1.model_card.model or "?" }}</strong> model (no fine-tuning) and measures how well the
+     raw embeddings already separate individuals.</p>
+  <table class="metrics">
+    <tr><th>Embedding dim</th><td>{{ part1.model_card.embedding_dim or "?" }}</td></tr>
+    <tr><th>Images / identities</th><td>{{ part1.model_card.n_images or "?" }} / {{ part1.model_card.n_identities or "?" }}</td></tr>
+    <tr><th>Top-1 / Top-3 accuracy</th>
+        <td>{{ "%.1f%%"|format((part1.eval.top1_accuracy or 0) * 100) }} /
+            {{ "%.1f%%"|format((part1.eval.top3_accuracy or 0) * 100) }}</td></tr>
+    <tr><th>Mean similarity (same identity)</th><td>{{ "%.4f"|format(part1.eval.mean_cosine_same_identity or 0) }}</td></tr>
+    <tr><th>Mean similarity (different identity)</th><td>{{ "%.4f"|format(part1.eval.mean_cosine_diff_identity or 0) }}</td></tr>
+  </table>
+  {% if part1.has_image %}<img class="figure" src="{{ url_for('pipeline_image', filename='similarity.png') }}" alt="Baseline similarity heatmap">{% endif %}
+</section>
+
+<section class="card">
+  <h2>Part 2 &middot; Fine-tuning</h2>
+  <p>Fine-tunes <strong>{{ part2.config.model_architecture or "?" }}</strong> with ArcFace loss on
+     zebra / leopard / lion / giraffe, then recomputes the sample-set embeddings.</p>
+  <table class="metrics">
+    <tr><th>Top-1 / Top-3 accuracy</th>
+        <td>{{ "%.1f%%"|format((part2.eval.top1_accuracy or 0) * 100) }} /
+            {{ "%.1f%%"|format((part2.eval.top3_accuracy or 0) * 100) }}</td></tr>
+    <tr><th>Mean similarity (same identity)</th><td>{{ "%.4f"|format(part2.eval.mean_cosine_same_identity or 0) }}</td></tr>
+    <tr><th>Mean similarity (different identity)</th><td>{{ "%.4f"|format(part2.eval.mean_cosine_diff_identity or 0) }}</td></tr>
+    <tr><th>Notebook calibration (&tau;)</th><td>{{ part2.config.optimal_tau }}</td></tr>
+  </table>
+  {% if part2.has_image %}<img class="figure" src="{{ url_for('pipeline_image', filename='oscr_curve.png') }}" alt="Open-set classification rate curve">{% endif %}
+</section>
+
+<section class="card">
+  <h2>Baseline vs. fine-tuned</h2>
+  {% if comparison_rows %}
+  <table class="metrics">
+    <tr><th>Metric</th><th>Baseline</th><th>Fine-tuned</th></tr>
+    {% for row in comparison_rows %}
+    <tr><td>{{ row.Metric }}</td><td>{{ row.Mbalis_Baseline }}</td><td>{{ row.Keightly_FineTuned }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="hint">comparison_metrics.csv not found.</p>{% endif %}
+</section>
+
+</main>
+  <footer class="site-footer">WildlifeID &middot; Big Data Analytics project &middot; all four parts, one pipeline</footer>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+    "model_architecture": "MegaDescriptor-L-384",
+    "embedding_dimensions": 1536,
+    "normalization": "L2",
+    "optimal_tau": 0.9292929292929294
+}

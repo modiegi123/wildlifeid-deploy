@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WildlifeID - Gallery admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('admin') }}">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 2C8 6 4 8.5 4 13a8 8 0 0 0 16 0c0-4.5-4-7-8-11Zm0 17a5 5 0 0 1-5-5c0-2.4 1.8-4 5-7 3.2 3 5 4.600 5 7a5 5 0 0 1-5 5Z"/></svg>
+      <span>WildlifeID</span>
+    </a>
+    <span class="tagline">Gallery admin - Part 4</span>
+    <nav class="site-nav">
+      <a href="/">Upload</a>
+      <a class="active" href="/admin/">Admin</a>
+      <a href="/pipeline/">Pipeline report</a>
+    </nav>
+  </header>
+  <main class="container">
+<section class="card">
+  <h2>Gallery</h2>
+  <p id="loading" class="hint">Loading&hellip;</p>
+  <ul id="gallery" class="gallery-grid" hidden></ul>
+</section>
+
+<section class="card">
+  <h2>Add an individual</h2>
+  <form id="add-form" novalidate>
+    <label for="identity">Identity (unique name)</label>
+    <input id="identity" name="identity" type="text" required placeholder="e.g. Zebra_042">
+
+    <label for="species">Species</label>
+    <input id="species" name="species" type="text" required placeholder="e.g. zebra">
+
+    <label for="files">Reference photo(s)</label>
+    <input id="files" name="files" type="file" accept="image/jpeg,image/png,image/webp" multiple required>
+    <p class="hint">JPG, PNG or WebP. One photo is enough; a few angles improve matching.</p>
+
+    <p id="form-error" class="error" role="alert" hidden></p>
+    <p id="form-success" class="success" role="status" hidden></p>
+
+    <div class="actions">
+      <button id="submit-btn" class="btn primary" type="submit">Add to gallery</button>
+    </div>
+  </form>
+</section>
+</main>
+  <footer class="site-footer">WildlifeID &middot; Big Data Analytics project &middot; Part 4: gallery &amp; evaluation</footer>
+  <script>window.WILDLIFEID_ADMIN = {galleryUrl: "{{ url_for('api_gallery_list') }}"};</script>
+<script>
+(() => {
+  const cfg = window.WILDLIFEID_ADMIN;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+
+  async function loadGallery() {
+    $("loading").hidden = false; $("gallery").hidden = true;
+    const res = await fetch(cfg.galleryUrl);
+    const data = await res.json();
+    const list = $("gallery");
+    list.innerHTML = "";
+    data.individuals.forEach((ind) => {
+      const li = el("li");
+      const img = el("img"); img.src = ind.sample_image_url; img.alt = ind.identity; img.loading = "lazy";
+      li.append(img, el("div", "name", ind.identity), el("div", "sub", `${ind.species} · ${ind.n_images} photo(s)`));
+      li.append(el("span", "badge" + (ind.source === "added" ? " added" : ""), ind.source === "added" ? "Added" : "Baseline"));
+      list.append(li);
+    });
+    $("loading").hidden = true; list.hidden = false;
+  }
+
+  const form = $("add-form"), submit = $("submit-btn"), errBox = $("form-error"), okBox = $("form-success");
+  const showError = (msg) => { errBox.textContent = msg; errBox.hidden = !msg; };
+  const showSuccess = (msg) => { okBox.textContent = msg; okBox.hidden = !msg; };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showError(""); showSuccess(""); submit.disabled = true;
+    try {
+      const body = new FormData(form);
+      const res = await fetch(cfg.galleryUrl, { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error && data.error.message) || `Could not add individual (${res.status}).`);
+      showSuccess(`Added ${data.identity} with ${data.n_images} photo(s).`);
+      form.reset();
+      await loadGallery();
+    } catch (err) {
+      showError(err.message || "Could not add individual. Please try again.");
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  loadGallery();
+})();
+</script>
+</body>
+</html>

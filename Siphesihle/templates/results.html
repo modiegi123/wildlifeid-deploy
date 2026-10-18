@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WildlifeID - Results</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('index') }}">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 2C8 6 4 8.5 4 13a8 8 0 0 0 16 0c0-4.5-4-7-8-11Zm0 17a5 5 0 0 1-5-5c0-2.4 1.8-4 5-7 3.2 3 5 4.600 5 7a5 5 0 0 1-5 5Z"/></svg>
+      <span>WildlifeID</span>
+    </a>
+    <span class="tagline">Learning-based wildlife identification</span>
+    <nav class="site-nav">
+      <a class="active" href="/">Upload</a>
+      <a href="/admin/">Admin</a>
+      <a href="/pipeline/">Pipeline report</a>
+    </nav>
+  </header>
+  <main class="container">
+<p><a class="back" href="{{ url_for('index') }}">&larr; Identify another photo</a></p>
+
+<div id="loading" class="card center" aria-live="polite">
+  <div class="spinner" aria-hidden="true"></div>
+  <p>Comparing with the gallery&hellip;</p>
+  <noscript><p class="error">This page needs JavaScript to show results.</p></noscript>
+</div>
+
+<div id="error-box" class="card error-card" role="alert" hidden>
+  <h2>Something went wrong</h2>
+  <p id="error-text"></p>
+  <p><a class="btn" href="{{ url_for('index') }}">Try again</a></p>
+</div>
+
+<div id="results" hidden>
+  <section class="card verdict" id="verdict">
+    <img id="query-img" class="query" alt="The photo you uploaded">
+    <div class="verdict-text">
+      <span id="badge" class="badge"></span>
+      <h1 id="verdict-title"></h1>
+      <p id="verdict-sub"></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Closest individuals in the gallery</h2>
+    <ol id="matches" class="matches"></ol>
+    <p class="legend"><span class="swatch"></span> Dashed line = decision threshold (cosine similarity <span id="thr"></span>).
+       Individuals at or beyond it count as a match.</p>
+  </section>
+
+  <section class="card meta" id="meta"></section>
+</div>
+</main>
+  <footer class="site-footer">WildlifeID &middot; Big Data Analytics project &middot; Part 3: upload &amp; results</footer>
+  <script>window.WILDLIFEID = {resultsUrl: "{{ url_for('api_results', upload_id=upload_id) }}"};</script>
+<script>
+(() => {
+  const cfg = window.WILDLIFEID;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const pretty = (s) => s.replace(/_/g, " ");
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+  function fail(msg) {
+    $("loading").hidden = true; $("results").hidden = true;
+    $("error-text").textContent = msg; $("error-box").hidden = false;
+  }
+
+  function render(r) {
+    $("query-img").src = r.preview_url;
+    const top = r.matches[0];
+    const verdict = $("verdict");
+    const isMatch = r.decision === "match";
+    verdict.classList.add(isMatch ? "match" : "new");
+    $("badge").textContent = isMatch ? "Known individual" : "Possible new individual";
+    if (isMatch) {
+      $("verdict-title").textContent = pretty(top.identity);
+      $("verdict-sub").textContent = `${top.species} · similarity ${top.similarity.toFixed(3)} (threshold ${r.threshold.toFixed(3)})`;
+    } else {
+      // The re-id model was never trained to recognise species in general, only to tell known
+      // individuals apart - so naming the nearest match's species here would read as a species
+      // guess the system never actually made. The subtitle still gives the full detail.
+      $("verdict-title").textContent = "No confident match in the gallery";
+      $("verdict-sub").textContent = top
+        ? `The closest individual (${pretty(top.identity)}, ${top.species}) scores ${top.similarity.toFixed(3)}, below the ${r.threshold.toFixed(3)} threshold - so it is not forced into a match.`
+        : "The gallery is empty.";
+    }
+
+    $("thr").textContent = r.threshold.toFixed(3);
+    const list = $("matches");
+    r.matches.forEach((m) => {
+      const li = el("li", "match" + (m.rank === 1 ? " top" : "") + (m.above_threshold ? " pass" : ""));
+      const img = el("img"); img.src = m.image_url; img.alt = `Gallery photo of ${pretty(m.identity)}`; img.loading = "lazy";
+      const info = el("div", "info");
+      info.append(el("div", "name", `${m.rank}. ${pretty(m.identity)}`),
+                  el("div", "sub", `${m.species} · ${m.n_gallery_images} gallery photos`));
+      const bar = el("div", "bar"); bar.setAttribute("role", "img");
+      bar.setAttribute("aria-label", `Similarity ${m.similarity.toFixed(3)}, threshold ${r.threshold.toFixed(3)}`);
+      const fill = el("div", "fill"); fill.style.width = (clamp01(m.similarity) * 100) + "%";
+      const thr = el("div", "thr"); thr.style.left = (clamp01(r.threshold) * 100) + "%";
+      bar.append(fill, thr); info.append(bar);
+      li.append(img, info, el("div", "score", m.similarity.toFixed(3)));
+      list.append(li);
+    });
+
+    const meta = $("meta");
+    const dl = el("dl", "meta-list"); dl.style.display = "contents";
+    [["Model", r.model.name], ["Embedding", `${r.model.embedding_dim}-d, cosine`],
+     ["Gallery", `${r.gallery.individuals} individuals / ${r.gallery.images} photos`],
+     ["Threshold", `${r.threshold.toFixed(3)} (${r.threshold_source.split(" (")[0]})`],
+     ["Inference time", `${r.timing_ms.embed} ms`], ["Photo", r.filename]].forEach(([k, v]) => {
+      const box = el("div"); box.append(el("dt", null, k), el("dd", null, v)); dl.append(box);
+    });
+    meta.append(dl);
+    $("loading").hidden = true; $("results").hidden = false;
+  }
+
+  fetch(cfg.resultsUrl)
+    .then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.error && data.error.message) || `Request failed (${res.status}).`);
+      render(data);
+    })
+    .catch((err) => fail(err.message || "Could not load the results."));
+})();
+</script>
+</body>
+</html>

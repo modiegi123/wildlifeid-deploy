@@ -1,0 +1,18 @@
+{
+  "baseline": {
+    "similarity_threshold": 0.2754,
+    "source": "recalibrated for MegaDescriptor-T-224 (midpoint of the gap, leave-one-identity-out, n=24)",
+    "known_best_similarity_min": 0.4118,
+    "unknown_best_similarity_max": 0.1389,
+    "known_accept_rate": 1.0,
+    "unknown_false_accept_rate": 0.0
+  },
+  "finetuned": {
+    "similarity_threshold": 0.1734,
+    "source": "model_checks.py calibrate (midpoint of the gap, leave-one-identity-out, n=24)",
+    "known_best_similarity_min": 0.24,
+    "unknown_best_similarity_max": 0.1068,
+    "known_accept_rate": 1.0,
+    "unknown_false_accept_rate": 0.0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "top1_accuracy": 1.0,
+  "top3_accuracy": 1.0,
+  "mean_cosine_same_identity": 0.650238037109375,
+  "mean_cosine_diff_identity": -0.006179681979119778
+}

@@ -1,0 +1,5 @@
+Metric,Mbalis_Baseline,Keightly_FineTuned
+Top-1 Accuracy,1.0,1.0
+Top-3 Accuracy,1.0,1.0
+Mean Distance (Same),0.7655091285705566,0.25453218817710876
+Mean Distance (Diff),0.007641186472028494,0.9814213514328003
