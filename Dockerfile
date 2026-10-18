@@ -2,8 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# CPU-only torch wheel - far smaller than the default CUDA build, and this Space has no GPU
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# CPU-only torch + torchvision, installed together from the same index so their compiled ops
+# stay ABI-compatible (timm depends on torchvision; installing it separately via PyPI later
+# pulls a mismatched build and breaks with "operator torchvision::nms does not exist").
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
